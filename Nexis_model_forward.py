@@ -17,7 +17,7 @@ class run_Nexis:
         self.w_dir = w_dir_ # Binary flag indicating whether to use directionality or not 
         self.use_baseline = use_baseline_ # Binary flag indicating whether you are using baseline or a binary seed to initialize the model
         self.region_volumes = region_volumes_ # Array of region volumes, nROI x 1 if applicable 
-        self.logistic_term = logistic_term_ #ADDED BY ROBIN
+        self.logistic_term = logistic_term_ # Flag to indicate either exponential or logistic model
 
     def simulate_nexis(self, parameters):
         """
@@ -74,14 +74,14 @@ class run_Nexis:
 
         # Solve 
         if self.logistic_term:
-            y = self.sim_logistic(self.t_vec,x0,A,Gamma,k) 
+            y = self.logistic(self.t_vec,x0,A,Gamma,k) 
         else:
-            y = self.forward_sim(A,self.t_vec,x0)
+            y = self.exponential(A,self.t_vec,x0)
 
         return y
     
     # Solve via analytic method (no logistic term)
-    def forward_sim(self,A_,t_,x0_):
+    def exponential(self,A_,t_,x0_):
         y_ = np.zeros([np.shape(A_)[0],len(t_)])
         for i in list(range(len(t_))):
             ti = t_[i]
@@ -89,7 +89,7 @@ class run_Nexis:
         return y_
     
     # Solve via odeint with logistic term
-    def sim_logistic(self,t_,x0_,A_,Gamma_,k_):
+    def logistic(self,t_,x0_,A_,Gamma_,k_):
 
         # Define ODE function with a logistic term
         def ode_func(y, t, A, Gamma, k):

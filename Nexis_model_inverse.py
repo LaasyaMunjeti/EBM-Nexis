@@ -17,31 +17,31 @@ class run_Nexis:
         self.region_volumes = region_volumes_ # Array of region volumes, nROI x 1 if applicable 
         self.parameters = parameters_ # Fixed model parameters 
 
-    def inverse_nexis(self, parameters):
+    def inverse_nexis(self, time_point, subject_tau, tau_threshold): 
+        # l is lambda by which output is regularizized to increase scarcity
+        # time_poaint is the time point available for subject s
+        # subject_tau is a vector containing the values of tau in every region at that time point
         """
-        Returns a matrix, Y, that is nROI x nt representing the modeled Nexis pathology
-        given the provided parameters. alpha, beta, and gamma should be nonnegative scalars;
-        s should be bounded between 0 and 1; b and p should be nCT-long vectors
+        Returns initial vector x0 given fixed model parameters
+
         """
         # Define parameters
         ntypes = np.size(self.U,axis=1)
-        alpha = parameters[0] # global connectome-independent growth (range [0,5])
-        beta = parameters[1] # global diffusivity rate (range [0,5])
-        if self.use_baseline:
-            gamma = 1
-        else:
-            gamma = parameters[2] # seed rescale value (range [0,10])
+        alpha = self.parameters[0] # global connectome-independent growth (range [0,5])
+        beta = self.parameters[1] # global diffusivity rate (range [0,5])
+        #if self.use_baseline:
+            #gamma = 1
+        #else:
+            #gamma = self.parameters[2] # seed rescale value (range [0,10])
         if self.w_dir==0:
             s = 0.5
         else:
-            s = parameters[3] # directionality (0 = anterograde, 1 = retrograde)
-        b = np.transpose(parameters[4:(ntypes+4)]) # cell-type-dependent spread modifier (range [-5,5])
-        p = np.transpose(parameters[(ntypes+4):6]) # cell-type-dependent growth modifier (range [-5,5]) #EDITED
-        k = parameters[6] # Carrying capacity ADDED
+            s = self.parameters[3] # directionality (0 = anterograde, 1 = retrograde)
+        b = np.transpose(self.parameters[4:(ntypes+4)]) # cell-type-dependent spread modifier (range [-5,5])
+        p = np.transpose(self.parameters[(ntypes+4):6]) # cell-type-dependent growth modifier (range [-5,5]) 
         
         # Define starting pathology x0
-        x0 = gamma * self.init_vec
-        
+                
         # Define diagonal matrix Gamma containing spread-independent terms
         s_p = np.dot(self.U,p)
         Gamma = np.diag(s_p) + (alpha * np.eye(len(s_p))) 
@@ -59,48 +59,34 @@ class run_Nexis:
         if self.volcorrect:
             voxels_2hem = self.region_volumes
 
-            # ROBIN'S EDIT
             inv_voxels_2hem = np.diag(np.squeeze(voxels_2hem).astype(float) ** (-1))
-            
-            #ORIGINAL
-            #inv_voxels_2hem = np.diag(np.squeeze(voxels_2hem) ** (-1))
             
             L = np.mean(voxels_2hem) * np.dot(inv_voxels_2hem,L)
 
         # Define system dydt = Ax
         A = Gamma - (beta * L)
 
-        # Solve 
-        if self.logistic_term:
-            y = self.sim_logistic(self.t_vec,x0,A,Gamma,k) 
-        else:
-            y = self.forward_sim(A,self.t_vec,x0)
+        #Solve
+        x0 = self.run_inverse(A, subject_tau, time_point, tau_threshold)
 
-        return y
+        return x0
+
+    def run_inverse(self, A, subject_tau, time_point, tau_threshold):
     
-    # Solve via analytic method (no logistic term)
-    def forward_sim(self,A_,t_,x0_):
-        y_ = np.zeros([np.shape(A_)[0],len(t_)])
-        for i in list(range(len(t_))):
-            ti = t_[i]
-            y_[:,i] = np.dot(expm(A_*ti),np.squeeze(x0_)) 
-        return y_
-    
-    # Solve via odeint with logistic term
-    def sim_logistic(self,t_,x0_,A_,Gamma_,k_):
+        eigenvalues, eigenvectors = np.linalg.eig(A)  # Eigen decomposition of A
 
-        # Define ODE function with a logistic term
-        def ode_func(y, t, A, Gamma, k):
-            dydt = np.dot(A, y) - np.dot(Gamma,np.square(y)) / k
-            return dydt
+        # Projection into eigen space
+        x_eigen = np.dot(eigenvectors.T, subject_tau)
 
-        # Initial condition
-        y0 = x0_
+        # Loop through eigenvalues
+        q = np.zeros((len(eigenvalues), 1))
+        for i in range(len(eigenvalues)):
+            qi = np.exp(time_point * eigenvalues[i]) * x_eigen[i]
+            q[i] = qi
 
-        # Solve ODE using odeint
-        sol = odeint(ode_func, y0, t_, args=(A_,Gamma_,k_))
+        x0 = np.dot(eigenvectors, q)
 
-        # Transpose so that sol is an array with dim nROI x time points
-        sol = sol.T
+        # Threshold x0 vector such that any value < the threshold is set to 0
+        x0[x0 < tau_threshold] = 0
 
-        return sol
+        return x0
