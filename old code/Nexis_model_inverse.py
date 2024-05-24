@@ -17,10 +17,11 @@ class run_Nexis:
         self.region_volumes = region_volumes_ # Array of region volumes, nROI x 1 if applicable 
         self.parameters = parameters_ # Fixed model parameters 
 
-    def inverse_nexis(self, time_point, subject_tau, tau_threshold): 
-        # l is lambda by which output is regularizized to increase scarcity
+    def inverse_nexis(self, time_point, subject_tau, tau_threshold, eigen_threshold): 
+        # tau_threshold is the percentile under which all regions are sent to 0
         # time_poaint is the time point available for subject s
         # subject_tau is a vector containing the values of tau in every region at that time point
+        # eigen_threshold is percentile over which eigen values are removed
         """
         Returns initial vector x0 given fixed model parameters
 
@@ -67,26 +68,40 @@ class run_Nexis:
         A = Gamma - (beta * L)
 
         #Solve
-        x0 = self.run_inverse(A, subject_tau, time_point, tau_threshold)
+        x0 = self.run_inverse(A, subject_tau, time_point, tau_threshold,eigen_threshold)
 
         return x0
 
-    def run_inverse(self, A, subject_tau, time_point, tau_threshold):
+    def run_inverse(self,A, subject_tau, time_point, tau_threshold,eigen_threshold):
     
-        eigenvalues, eigenvectors = np.linalg.eig(A)  # Eigen decomposition of A
+        # Eigen decomposition of A
+        eigenvalues, eigenvectors = np.linalg.eig(A)  
+
+        # Remove the highest eigen values based on eigen_threshold
+        if eigen_threshold == 100:
+            # If the threshold is 100, include all eigenvalues
+            mask = np.ones_like(eigenvalues, dtype=bool)
+        else:
+            # Calculate the threshold eigenvalue based on the given percentile
+            eigen_percentile = np.percentile(eigenvalues, eigen_threshold)
+            mask = eigenvalues < eigen_percentile      
+        eigen_val_thresholded = eigenvalues[mask]
+        eigen_vec_thresholded = eigenvectors[:, mask]   
 
         # Projection into eigen space
-        x_eigen = np.dot(eigenvectors.T, subject_tau)
+        x_eigen = np.dot(eigen_vec_thresholded.T, subject_tau)
 
         # Loop through eigenvalues
-        q = np.zeros((len(eigenvalues), 1))
-        for i in range(len(eigenvalues)):
-            qi = np.exp(time_point * eigenvalues[i]) * x_eigen[i]
+        q = np.zeros((len(eigen_val_thresholded), 1))
+        for i in range(len(eigen_val_thresholded)):
+            qi = np.exp(time_point * eigen_val_thresholded[i]) * x_eigen[i]
             q[i] = qi
 
-        x0 = np.dot(eigenvectors, q)
+        x0 = np.dot(eigen_vec_thresholded, q)
 
         # Threshold x0 vector such that any value < the threshold is set to 0
-        x0[x0 < tau_threshold] = 0
+        tau_percentile = np.percentile(x0, tau_threshold)
+        x0_thresholded = x0.copy()  
+        x0_thresholded[x0 < tau_percentile] = 0
 
-        return x0
+        return x0_thresholded
