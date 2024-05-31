@@ -67,7 +67,7 @@ class run_Nexis:
         A = Gamma - (beta * L)
 
         # Solve 
-        if self.logistic_term == 1: # Run logistic forward model
+        if self.logistic_term: # Run logistic forward model
             y = self.logistic(self.t_vec,x0,A,Gamma,k) 
             return y
         
