@@ -6,6 +6,7 @@ from scipy.linalg import expm
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.integrate import odeint
+from scipy.integrate import solve_ivp
 
 class run_Nexis:
     def __init__(self,C_,U_,init_vec_,t_vec_,w_dir_=0,volcorrect_=0,use_baseline_=0,region_volumes_=[], logistic_term_=0):
@@ -92,17 +93,26 @@ class run_Nexis:
     def logistic(self,t_,x0_,A_,Gamma_,k_):
 
         # Define ODE function with a logistic term
-        def ode_func(y, t, A, Gamma, k):
+        # def ode_func(t, y, A, Gamma, k): # TEST
+        def ode_func(y, t, A, Gamma, k): # ORIGINAL
             dydt = np.dot(A, y) - np.dot(Gamma,np.square(y)) / k
             return dydt
 
         # Initial condition
         y0 = x0_
 
-        # Solve ODE using odeint
+        #ORIGINAL: solve ODE using odeint
         sol = odeint(ode_func, y0, t_, args=(A_,Gamma_,k_))
 
+        # TEST: solve with solve_ivp (more robust ODE solver)
+        # sol = solve_ivp(ode_func, [t_[0], t_[-1]], y0, args=(A_, Gamma_, k_), t_eval=t_, method='LSODA')
+        # if sol.status != 0:
+        #     raise RuntimeError(f"ODE solver failed with message: {sol.message}")
+        # sol = sol.y
+
         # Transpose so that sol is an array with dim nROI x time points
-        sol = sol.T
+        sol = sol.T # ORIGINAL (excluded in test)
 
         return sol
+    
+        
