@@ -81,7 +81,7 @@ class run_Nexis:
 
         return y
     
-    # Solve via analytic method (no logistic term)
+    # Solve via analytic method 
     def exponential(self,A_,t_,x0_):
         y_ = np.zeros([np.shape(A_)[0],len(t_)])
         for i in list(range(len(t_))):
@@ -93,22 +93,14 @@ class run_Nexis:
     def logistic(self,t_,x0_,A_,Gamma_,k_):
 
         # Define ODE function with a logistic term
-        # def ode_func(t, y, A, Gamma, k): # TEST
-        def ode_func(y, t, A, Gamma, k): # ORIGINAL
-            dydt = np.dot(A, y) - np.dot(Gamma,np.square(y)) / k
+        def ode_func(y, t, A, Gamma, k): 
+            dydt = np.dot(A, y) - np.dot(Gamma,np.square(y)) / k # ADD STAGE -> TIME CONVERSION HERE
             return dydt
 
         # Initial condition
         y0 = x0_
 
-        #ORIGINAL: solve ODE using odeint
         sol = odeint(ode_func, y0, t_, args=(A_,Gamma_,k_))
-
-        # TEST: solve with solve_ivp (more robust ODE solver)
-        # sol = solve_ivp(ode_func, [t_[0], t_[-1]], y0, args=(A_, Gamma_, k_), t_eval=t_, method='LSODA')
-        # if sol.status != 0:
-        #     raise RuntimeError(f"ODE solver failed with message: {sol.message}")
-        # sol = sol.y
 
         # Transpose so that sol is an array with dim nROI x time points
         sol = sol.T # ORIGINAL (excluded in test)
